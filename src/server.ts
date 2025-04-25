@@ -221,12 +221,34 @@ export class ObsidianServer {
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
       }
 
+      // Helper to run a promise with a timeout
+      function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            reject(new McpError(
+              ErrorCode.InternalError,
+              `Tool execution timed out after ${ms / 1000} seconds`
+            ));
+          }, ms);
+          promise.then(
+            (value) => {
+              clearTimeout(timer);
+              resolve(value);
+            },
+            (err) => {
+              clearTimeout(timer);
+              reject(err);
+            }
+          );
+        });
+      }
+
       try {
         // Validate and transform arguments using tool's schema handler
         const validatedArgs = tool.inputSchema.parse(args);
         
-        // Execute tool with validated arguments
-        const result = await tool.handler(validatedArgs);
+        // Execute tool with validated arguments, with 15s timeout
+        const result = await withTimeout(tool.handler(validatedArgs), 15000);
         
         return {
           _meta: {
